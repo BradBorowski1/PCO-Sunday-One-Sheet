@@ -1,15 +1,12 @@
-// Vercel-compatible serverless API handler using Basic Auth (Client ID + Secret)
+// Vercel-compatible serverless API handler using Personal Access Token (PAT)
 import axios from "axios";
 
-const PCO_CLIENT_ID = process.env.PCO_CLIENT_ID;
-const PCO_CLIENT_SECRET = process.env.PCO_CLIENT_SECRET;
+const PCO_PAT = process.env.PCO_PAT;
 const SERVICE_TYPE_NAME = "Sunday Services";
-
-const basicAuth = Buffer.from(`${PCO_CLIENT_ID}:${PCO_CLIENT_SECRET}`).toString("base64");
 
 const authHeader = {
   headers: {
-    Authorization: `Basic ${basicAuth}`,
+    Authorization: `Bearer ${PCO_PAT}`,
   },
 };
 
@@ -79,8 +76,7 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
-    console.log("CLIENT_ID:", process.env.PCO_CLIENT_ID);
-    console.log("CLIENT_SECRET:", process.env.PCO_CLIENT_SECRET);
+    console.log("PCO_PAT:", process.env.PCO_PAT);
 
     const serviceTypeId = await getServiceTypeIdByName(SERVICE_TYPE_NAME);
     const plan = await getUpcomingPlan(serviceTypeId);
