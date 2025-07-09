@@ -6,11 +6,8 @@ const SERVICE_TYPE_NAME = "Sunday Services";
 
 const axiosAuth = axios.create({
   baseURL: "https://api.planningcenteronline.com/services/v2",
-  auth: {
-    username: PAT,
-    password: ""
-  },
   headers: {
+    "Authorization": `Bearer ${PAT}`,
     "User-Agent": "LSChurch Sunday Widget"
   }
 });
