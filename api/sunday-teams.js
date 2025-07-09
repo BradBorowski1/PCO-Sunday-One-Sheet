@@ -79,6 +79,9 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
+    console.log("CLIENT_ID:", process.env.PCO_CLIENT_ID);
+    console.log("CLIENT_SECRET:", process.env.PCO_CLIENT_SECRET);
+
     const serviceTypeId = await getServiceTypeIdByName(SERVICE_TYPE_NAME);
     const plan = await getUpcomingPlan(serviceTypeId);
 
