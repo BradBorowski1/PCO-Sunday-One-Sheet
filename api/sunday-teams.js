@@ -1,19 +1,20 @@
-// Vercel-compatible serverless API handler using Personal Access Token (PAT)
+// Vercel-compatible serverless API handler using client_id and secret (Basic Auth)
 import axios from "axios";
 
-const PCO_PAT = process.env.PCO_PAT;
+const CLIENT_ID = process.env.PCO_CLIENT_ID;
+const CLIENT_SECRET = process.env.PCO_CLIENT_SECRET;
 const SERVICE_TYPE_NAME = "Sunday Services";
 
-const authHeader = {
+const basicAuth = {
   headers: {
-    Authorization: `Bearer ${PCO_PAT}`,
+    Authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64")}`,
   },
 };
 
 async function getServiceTypeIdByName(name) {
   const res = await axios.get(
     "https://api.planningcenteronline.com/services/v2/service_types",
-    authHeader
+    basicAuth
   );
   const serviceType = res.data.data.find(
     (item) => item.attributes.name === name
@@ -24,7 +25,7 @@ async function getServiceTypeIdByName(name) {
 async function getUpcomingPlan(serviceTypeId) {
   const res = await axios.get(
     `https://api.planningcenteronline.com/services/v2/service_types/${serviceTypeId}/plans`,
-    authHeader
+    basicAuth
   );
   const plans = res.data.data;
 
@@ -47,7 +48,7 @@ async function getUpcomingPlan(serviceTypeId) {
 async function getTeamsForPlan(planId) {
   const res = await axios.get(
     `https://api.planningcenteronline.com/services/v2/plans/${planId}/team_members?include=team,person,position`,
-    authHeader
+    basicAuth
   );
   return res.data;
 }
@@ -76,7 +77,7 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
-    console.log("PCO_PAT:", process.env.PCO_PAT);
+    console.log("PCO_CLIENT_ID:", process.env.PCO_CLIENT_ID);
 
     const serviceTypeId = await getServiceTypeIdByName(SERVICE_TYPE_NAME);
     const plan = await getUpcomingPlan(serviceTypeId);
