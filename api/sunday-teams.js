@@ -1,6 +1,5 @@
 // Vercel-compatible serverless API handler using Basic Auth (Client ID + Secret)
 import axios from "axios";
-import base64 from "base-64";
 
 const SERVICE_TYPE_NAME = "Sunday Services";
 
@@ -9,8 +8,11 @@ const clientSecret = process.env.PCO_CLIENT_SECRET;
 
 const axiosAuth = axios.create({
   baseURL: "https://api.planningcenteronline.com/services/v2",
+  auth: {
+    username: clientId,
+    password: clientSecret
+  },
   headers: {
-    Authorization: "Basic " + base64.encode(`${clientId}:${clientSecret}`),
     "Content-Type": "application/json",
     "User-Agent": "LSChurch Sunday Widget"
   },
