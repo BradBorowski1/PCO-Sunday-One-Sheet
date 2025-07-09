@@ -1,7 +1,5 @@
 // Vercel-compatible serverless API handler
 import axios from "axios";
-import dotenv from "dotenv";
-dotenv.config();
 
 const PCO_CLIENT_ID = process.env.PCO_CLIENT_ID;
 const PCO_CLIENT_SECRET = process.env.PCO_CLIENT_SECRET;
