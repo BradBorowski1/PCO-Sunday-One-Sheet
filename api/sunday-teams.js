@@ -1,20 +1,36 @@
-// Vercel-compatible serverless API handler using client_id and secret (Basic Auth)
+// Vercel-compatible serverless API handler using client credentials with access token
 import axios from "axios";
 
 const CLIENT_ID = process.env.PCO_CLIENT_ID;
 const CLIENT_SECRET = process.env.PCO_CLIENT_SECRET;
 const SERVICE_TYPE_NAME = "Sunday Services";
 
-const basicAuth = {
-  headers: {
-    Authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64")}`,
-  },
-};
+async function getAccessToken() {
+  const params = new URLSearchParams();
+  params.append("grant_type", "client_credentials");
 
-async function getServiceTypeIdByName(name) {
+  const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
+
+  const response = await axios.post(
+    "https://api.planningcenteronline.com/oauth/token",
+    params,
+    {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    }
+  );
+
+  return response.data.access_token;
+}
+
+async function getServiceTypeIdByName(name, token) {
   const res = await axios.get(
     "https://api.planningcenteronline.com/services/v2/service_types",
-    basicAuth
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
   );
   const serviceType = res.data.data.find(
     (item) => item.attributes.name === name
@@ -22,10 +38,12 @@ async function getServiceTypeIdByName(name) {
   return serviceType?.id;
 }
 
-async function getUpcomingPlan(serviceTypeId) {
+async function getUpcomingPlan(serviceTypeId, token) {
   const res = await axios.get(
     `https://api.planningcenteronline.com/services/v2/service_types/${serviceTypeId}/plans`,
-    basicAuth
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
   );
   const plans = res.data.data;
 
@@ -45,10 +63,12 @@ async function getUpcomingPlan(serviceTypeId) {
   return upcoming;
 }
 
-async function getTeamsForPlan(planId) {
+async function getTeamsForPlan(planId, token) {
   const res = await axios.get(
     `https://api.planningcenteronline.com/services/v2/plans/${planId}/team_members?include=team,person,position`,
-    basicAuth
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
   );
   return res.data;
 }
@@ -77,17 +97,16 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
-    console.log("PCO_CLIENT_ID:", process.env.PCO_CLIENT_ID);
-
-    const serviceTypeId = await getServiceTypeIdByName(SERVICE_TYPE_NAME);
-    const plan = await getUpcomingPlan(serviceTypeId);
+    const token = await getAccessToken();
+    const serviceTypeId = await getServiceTypeIdByName(SERVICE_TYPE_NAME, token);
+    const plan = await getUpcomingPlan(serviceTypeId, token);
 
     if (!plan) {
       res.status(200).send("<html><body><h2>No plan found for the upcoming Sunday.</h2></body></html>");
       return;
     }
 
-    const teamData = await getTeamsForPlan(plan.id);
+    const teamData = await getTeamsForPlan(plan.id, token);
     const grouped = formatTeamData(teamData);
 
     let html = `
