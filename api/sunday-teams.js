@@ -7,14 +7,21 @@ const SERVICE_TYPE_NAME = "Sunday Services";
 const axiosAuth = axios.create({
   baseURL: "https://api.planningcenteronline.com/services/v2",
   headers: {
-    "Authorization": `Bearer ${PAT}`,
+    Authorization: `Bearer ${PAT}`,
+    "Content-Type": "application/json",
     "User-Agent": "LSChurch Sunday Widget"
+  },
+  validateStatus: function (status) {
+    return status < 500; // Let us catch 401s
   }
 });
 
 async function getServiceTypeIdByName(name) {
   try {
     const res = await axiosAuth.get("/service_types");
+    if (res.status === 401) {
+      throw new Error("Unauthorized access — PAT may not have access to Services API");
+    }
     const serviceType = res.data.data.find(
       (item) => item.attributes.name === name
     );
