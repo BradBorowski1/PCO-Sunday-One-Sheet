@@ -1,13 +1,13 @@
-// Vercel-compatible serverless API handler using Personal Access Token (PAT)
+// Vercel-compatible serverless API handler using OAuth Access Token
 import axios from "axios";
 
-const PAT = process.env.PCO_PAT;
+const ACCESS_TOKEN = process.env.PCO_ACCESS_TOKEN;
 const SERVICE_TYPE_NAME = "Sunday Services";
 
 const axiosAuth = axios.create({
   baseURL: "https://api.planningcenteronline.com/services/v2",
   headers: {
-    Authorization: `Bearer ${PAT}`,
+    Authorization: `Bearer ${ACCESS_TOKEN}`,
     "Content-Type": "application/json",
     "User-Agent": "LSChurch Sunday Widget"
   },
@@ -20,7 +20,7 @@ async function getServiceTypeIdByName(name) {
   try {
     const res = await axiosAuth.get("/service_types");
     if (res.status === 401) {
-      throw new Error("Unauthorized access — PAT may not have access to Services API");
+      throw new Error("Unauthorized access — token may not have access to Services API");
     }
     const serviceType = res.data.data.find(
       (item) => item.attributes.name === name
