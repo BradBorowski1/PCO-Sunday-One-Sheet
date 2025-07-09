@@ -1,11 +1,11 @@
-// Vercel-compatible serverless API handler
+// Vercel-compatible serverless API handler using Basic Auth (Client ID + Secret)
 import axios from "axios";
 
 const PCO_CLIENT_ID = process.env.PCO_CLIENT_ID;
 const PCO_CLIENT_SECRET = process.env.PCO_CLIENT_SECRET;
 const SERVICE_TYPE_NAME = "Sunday Services";
 
-const basicAuth = Buffer.from(String(`${PCO_CLIENT_ID}:${PCO_CLIENT_SECRET}`)).toString("base64");
+const basicAuth = Buffer.from(`${PCO_CLIENT_ID}:${PCO_CLIENT_SECRET}`).toString("base64");
 
 const authHeader = {
   headers: {
