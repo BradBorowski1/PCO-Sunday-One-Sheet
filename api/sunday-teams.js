@@ -22,20 +22,26 @@ async function getAccessToken() {
     }
   );
 
+  console.log("Access token retrieved:", response.data.access_token); // Log the access token for debugging
   return response.data.access_token;
 }
 
 async function getServiceTypeIdByName(name, token) {
-  const res = await axios.get(
-    "https://api.planningcenteronline.com/services/v2/service_types",
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  const serviceType = res.data.data.find(
-    (item) => item.attributes.name === name
-  );
-  return serviceType?.id;
+  try {
+    const res = await axios.get(
+      "https://api.planningcenteronline.com/services/v2/service_types",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    const serviceType = res.data.data.find(
+      (item) => item.attributes.name === name
+    );
+    return serviceType?.id;
+  } catch (error) {
+    console.error("Failed to fetch service types:", error.response?.data || error.message);
+    throw error;
+  }
 }
 
 async function getUpcomingPlan(serviceTypeId, token) {
@@ -136,7 +142,7 @@ export default async function handler(req, res) {
     html += `</body></html>`;
     res.status(200).send(html);
   } catch (err) {
-    console.error(err);
+    console.error("Final error handler:", err.response?.data || err.message);
     res.status(500).send(`<pre>${err.message || "Unknown error"}</pre>`);
   }
 }
