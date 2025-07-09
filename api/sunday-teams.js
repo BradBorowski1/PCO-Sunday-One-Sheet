@@ -1,62 +1,52 @@
+// Vercel-compatible serverless API handler using Basic Auth (Client ID + Secret)
 import axios from "axios";
+import base64 from "base-64";
 
-const CLIENT_ID = process.env.PCO_CLIENT_ID;
-const CLIENT_SECRET = process.env.PCO_CLIENT_SECRET;
 const SERVICE_TYPE_NAME = "Sunday Services";
 
-async function getAccessToken() {
-  const tokenRes = await axios.post("https://api.planningcenteronline.com/oauth/token", null, {
-    params: {
-      grant_type: "client_credentials",
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET
-    },
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    }
-  });
+const clientId = process.env.PCO_CLIENT_ID;
+const clientSecret = process.env.PCO_CLIENT_SECRET;
 
-  return tokenRes.data.access_token;
+const axiosAuth = axios.create({
+  baseURL: "https://api.planningcenteronline.com/services/v2",
+  headers: {
+    Authorization: "Basic " + base64.encode(`${clientId}:${clientSecret}`),
+    "Content-Type": "application/json",
+    "User-Agent": "LSChurch Sunday Widget"
+  },
+  validateStatus: function (status) {
+    return status < 500;
+  }
+});
+
+// same logic as before...
+async function getServiceTypeIdByName(name) {
+  const res = await axiosAuth.get("/service_types");
+  if (res.status === 401) throw new Error("Unauthorized – check credentials.");
+  const match = res.data.data.find((item) => item.attributes.name === name);
+  return match?.id;
 }
 
-async function getAxiosInstance() {
-  const token = await getAccessToken();
-  return axios.create({
-    baseURL: "https://api.planningcenteronline.com/services/v2",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "User-Agent": "LSChurch Sunday Widget"
-    }
-  });
-}
-
-async function getServiceTypeIdByName(axiosInstance, name) {
-  const res = await axiosInstance.get("/service_types");
-  const serviceType = res.data.data.find((item) => item.attributes.name === name);
-  return serviceType?.id;
-}
-
-async function getUpcomingPlan(axiosInstance, serviceTypeId) {
-  const res = await axiosInstance.get(`/service_types/${serviceTypeId}/plans`);
+async function getUpcomingPlan(serviceTypeId) {
+  const res = await axiosAuth.get(`/service_types/${serviceTypeId}/plans`);
   const plans = res.data.data;
 
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const nextSunday = new Date(today);
-  nextSunday.setDate(today.getDay() === 0 ? today.getDate() : today.getDate() + (7 - today.getDay()));
+  nextSunday.setDate(
+    today.getDay() === 0 ? today.getDate() : today.getDate() + (7 - today.getDay())
+  );
   const nextSundayStr = nextSunday.toISOString().split("T")[0];
 
-  const upcoming = plans.find((plan) => {
+  return plans.find((plan) => {
     const planDate = plan.attributes.sort_date.split("T")[0];
     return planDate === nextSundayStr;
   });
-
-  return upcoming;
 }
 
-async function getTeamsForPlan(axiosInstance, planId) {
-  const res = await axiosInstance.get(`/plans/${planId}/team_members?include=team,person,position`);
+async function getTeamsForPlan(planId) {
+  const res = await axiosAuth.get(`/plans/${planId}/team_members?include=team,person,position`);
   return res.data;
 }
 
@@ -71,7 +61,6 @@ function formatTeamData(data) {
     if (!team || !person) continue;
 
     const name = `${person.first_name} ${person.last_name.charAt(0)}.`;
-
     if (!grouped[team]) grouped[team] = [];
     grouped[team].push({ name, position: position || "Unspecified Position" });
   }
@@ -84,16 +73,15 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
-    const axiosInstance = await getAxiosInstance();
-    const serviceTypeId = await getServiceTypeIdByName(axiosInstance, SERVICE_TYPE_NAME);
-    const plan = await getUpcomingPlan(axiosInstance, serviceTypeId);
+    const serviceTypeId = await getServiceTypeIdByName(SERVICE_TYPE_NAME);
+    const plan = await getUpcomingPlan(serviceTypeId);
 
     if (!plan) {
       res.status(200).send("<html><body><h2>No plan found for the upcoming Sunday.</h2></body></html>");
       return;
     }
 
-    const teamData = await getTeamsForPlan(axiosInstance, plan.id);
+    const teamData = await getTeamsForPlan(plan.id);
     const grouped = formatTeamData(teamData);
 
     let html = `
