@@ -1,47 +1,50 @@
-// Vercel-compatible serverless API handler using OAuth Access Token
 import axios from "axios";
 
-const ACCESS_TOKEN = process.env.PCO_ACCESS_TOKEN;
+const CLIENT_ID = process.env.PCO_CLIENT_ID;
+const CLIENT_SECRET = process.env.PCO_CLIENT_SECRET;
 const SERVICE_TYPE_NAME = "Sunday Services";
 
-const axiosAuth = axios.create({
-  baseURL: "https://api.planningcenteronline.com/services/v2",
-  headers: {
-    Authorization: `Bearer ${ACCESS_TOKEN}`,
-    "Content-Type": "application/json",
-    "User-Agent": "LSChurch Sunday Widget"
-  },
-  validateStatus: function (status) {
-    return status < 500; // Let us catch 401s
-  }
-});
-
-async function getServiceTypeIdByName(name) {
-  try {
-    const res = await axiosAuth.get("/service_types");
-    if (res.status === 401) {
-      throw new Error("Unauthorized access — token may not have access to Services API");
+async function getAccessToken() {
+  const tokenRes = await axios.post("https://api.planningcenteronline.com/oauth/token", null, {
+    params: {
+      grant_type: "client_credentials",
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET
+    },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
     }
-    const serviceType = res.data.data.find(
-      (item) => item.attributes.name === name
-    );
-    return serviceType?.id;
-  } catch (error) {
-    console.error("Failed to fetch service types:", error.response?.data || error.message);
-    throw error;
-  }
+  });
+
+  return tokenRes.data.access_token;
 }
 
-async function getUpcomingPlan(serviceTypeId) {
-  const res = await axiosAuth.get(`/service_types/${serviceTypeId}/plans`);
+async function getAxiosInstance() {
+  const token = await getAccessToken();
+  return axios.create({
+    baseURL: "https://api.planningcenteronline.com/services/v2",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "User-Agent": "LSChurch Sunday Widget"
+    }
+  });
+}
+
+async function getServiceTypeIdByName(axiosInstance, name) {
+  const res = await axiosInstance.get("/service_types");
+  const serviceType = res.data.data.find((item) => item.attributes.name === name);
+  return serviceType?.id;
+}
+
+async function getUpcomingPlan(axiosInstance, serviceTypeId) {
+  const res = await axiosInstance.get(`/service_types/${serviceTypeId}/plans`);
   const plans = res.data.data;
 
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const nextSunday = new Date(today);
-  nextSunday.setDate(
-    today.getDay() === 0 ? today.getDate() : today.getDate() + (7 - today.getDay())
-  );
+  nextSunday.setDate(today.getDay() === 0 ? today.getDate() : today.getDate() + (7 - today.getDay()));
   const nextSundayStr = nextSunday.toISOString().split("T")[0];
 
   const upcoming = plans.find((plan) => {
@@ -52,8 +55,8 @@ async function getUpcomingPlan(serviceTypeId) {
   return upcoming;
 }
 
-async function getTeamsForPlan(planId) {
-  const res = await axiosAuth.get(`/plans/${planId}/team_members?include=team,person,position`);
+async function getTeamsForPlan(axiosInstance, planId) {
+  const res = await axiosInstance.get(`/plans/${planId}/team_members?include=team,person,position`);
   return res.data;
 }
 
@@ -81,15 +84,16 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
-    const serviceTypeId = await getServiceTypeIdByName(SERVICE_TYPE_NAME);
-    const plan = await getUpcomingPlan(serviceTypeId);
+    const axiosInstance = await getAxiosInstance();
+    const serviceTypeId = await getServiceTypeIdByName(axiosInstance, SERVICE_TYPE_NAME);
+    const plan = await getUpcomingPlan(axiosInstance, serviceTypeId);
 
     if (!plan) {
       res.status(200).send("<html><body><h2>No plan found for the upcoming Sunday.</h2></body></html>");
       return;
     }
 
-    const teamData = await getTeamsForPlan(plan.id);
+    const teamData = await getTeamsForPlan(axiosInstance, plan.id);
     const grouped = formatTeamData(teamData);
 
     let html = `
