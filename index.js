@@ -5,38 +5,69 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
+
+// Allow iframe embedding and cross-origin requests
+app.use((req, res, next) => {
+  res.setHeader("X-Frame-Options", "ALLOWALL");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  next();
+});
+
 const PORT = process.env.PORT || 3000;
+
+const PCO_CLIENT_ID = process.env.PCO_CLIENT_ID;
+const PCO_CLIENT_SECRET = process.env.PCO_CLIENT_SECRET;
 const SERVICE_TYPE_NAME = "Sunday Services";
 
-// HTTP Basic Auth header
+// Encode credentials for Basic Auth
 const authHeader = {
   headers: {
     Authorization:
       "Basic " +
-      Buffer.from(
-        `${process.env.PCO_CLIENT_ID}:${process.env.PCO_CLIENT_SECRET}`
-      ).toString("base64"),
+      Buffer.from(`${PCO_CLIENT_ID}:${PCO_CLIENT_SECRET}`).toString("base64"),
   },
 };
 
+// Get Service Type ID by name
 async function getServiceTypeIdByName(name) {
   const res = await axios.get(
     "https://api.planningcenteronline.com/services/v2/service_types",
     authHeader
   );
-  const service = res.data.data.find((i) => i.attributes.name === name);
-  return service?.id;
+  const serviceType = res.data.data.find(
+    (item) => item.attributes.name === name
+  );
+  return serviceType?.id;
 }
 
-async function getUpcomingPlan(id) {
+// Get upcoming plan for a service type (filtering for next Sunday)
+async function getUpcomingPlan(serviceTypeId) {
   const res = await axios.get(
-    `https://api.planningcenteronline.com/services/v2/service_types/${id}/plans`,
+    `https://api.planningcenteronline.com/services/v2/service_types/${serviceTypeId}/plans`,
     authHeader
   );
-  return res.data.data[0];
+  const plans = res.data.data;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const nextSunday = new Date(today);
+  nextSunday.setDate(
+    today.getDay() === 0 ? today.getDate() : today.getDate() + (7 - today.getDay())
+  );
+
+  const nextSundayStr = nextSunday.toISOString().split("T")[0];
+
+  const upcoming = plans.find((plan) => {
+    const planDate = plan.attributes.sort_date.split("T")[0];
+    return planDate === nextSundayStr;
+  });
+
+  return upcoming;
 }
 
-async function getTeams(planId) {
+// Get team members assigned to a plan
+async function getTeamsForPlan(planId) {
   const res = await axios.get(
     `https://api.planningcenteronline.com/services/v2/plans/${planId}/team_members?include=team,person,position`,
     authHeader
@@ -44,63 +75,78 @@ async function getTeams(planId) {
   return res.data;
 }
 
-function formatTeams(data) {
-  const inc = Object.fromEntries(data.included.map((i) => [i.id, i]));
+// Group and format the team data
+function formatTeamData(data) {
+  const included = Object.fromEntries(
+    data.included.map((i) => [i.id, i])
+  );
+
   const grouped = {};
 
   for (const tm of data.data) {
-    const team = inc[tm.relationships.team.data?.id]?.attributes.name;
-    const pos = inc[tm.relationships.position.data?.id]?.attributes?.name;
-    const person = inc[tm.relationships.person.data?.id]?.attributes;
+    const team = included[tm.relationships.team.data?.id]?.attributes?.name;
+    const position = included[tm.relationships.position.data?.id]?.attributes?.name;
+    const person = included[tm.relationships.person.data?.id]?.attributes;
     if (!team || !person) continue;
 
     const name = `${person.first_name} ${person.last_name.charAt(0)}.`;
-    grouped[team] = grouped[team] || [];
-    grouped[team].push({ name, position: pos || "Unspecified" });
+
+    if (!grouped[team]) grouped[team] = [];
+    grouped[team].push({
+      name: name,
+      position: position || "Unspecified Position",
+    });
   }
 
   return grouped;
 }
 
+// Route to display team assignments
 app.get("/sunday-teams", async (req, res) => {
   try {
-    const svcId = await getServiceTypeIdByName(SERVICE_TYPE_NAME);
-    const plan = await getUpcomingPlan(svcId);
-    const data = await getTeams(plan.id);
-    const teams = formatTeams(data);
+    const serviceTypeId = await getServiceTypeIdByName(SERVICE_TYPE_NAME);
+    const plan = await getUpcomingPlan(serviceTypeId);
+
+    if (!plan) {
+      res.send("<html><body><h2>No plan found for the upcoming Sunday.</h2></body></html>");
+      return;
+    }
+
+    const teamData = await getTeamsForPlan(plan.id);
+    const grouped = formatTeamData(teamData);
 
     let html = `
-    <html><head>
-      <meta charset="utf-8">
-      <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+    <html>
+    <head>
       <style>
-        body { font-family: 'Montserrat', sans-serif; background: #fff; color: #333; margin:0; padding:1rem; }
-        h1 { font-weight:600; color: #222; margin-bottom:1rem; font-size:1.6rem; }
-        .team { margin-bottom:2rem; }
-        .team h2 { font-weight:400; border-bottom:2px solid #666; padding-bottom:0.25rem; margin-bottom:0.5rem; color:#444; }
-        ul { list-style:none; padding:0; }
-        li { margin:0.3rem 0; font-weight:300; }
-        .position { font-weight:600; color:#555; }
+        body { font-family: sans-serif; padding: 20px; background: #f9f9f9; color: #333; }
+        .team-section { margin-bottom: 2rem; }
+        .team-section h2 { border-bottom: 2px solid #ccc; padding-bottom: 0.25rem; margin-bottom: 0.5rem; }
+        ul { list-style-type: none; padding-left: 1rem; }
+        li { padding: 4px 0; }
       </style>
-    </head><body>
+    </head>
+    <body>
       <h1>Sunday Teams – ${plan.attributes.dates}</h1>
-    `;
+  `;
 
-    for (const [team, members] of Object.entries(teams)) {
-      html += `<div class="team"><h2>${team}</h2><ul>`;
-      members.forEach(m => {
-        html += `<li><span>${m.name}</span> – <span class="position">${m.position}</span></li>`;
-      });
+    for (const [team, members] of Object.entries(grouped)) {
+      html += `<div class="team-section"><h2>${team}</h2><ul>`;
+      for (const m of members) {
+        html += `<li>${m.name} – ${m.position}</li>`;
+      }
       html += `</ul></div>`;
     }
 
     html += `</body></html>`;
+
     res.send(html);
-  } catch (e) {
-    console.error(e);
-    res.status(500).send("Error fetching data.");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error fetching Sunday team assignments.");
   }
 });
 
-app.listen(PORT, () => console.log(`Running on ${PORT}`));
-
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
