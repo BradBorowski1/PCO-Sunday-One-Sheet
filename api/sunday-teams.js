@@ -120,6 +120,6 @@ export default async function handler(req, res) {
     res.status(200).send(html);
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error fetching Sunday team assignments.");
+    res.status(500).send(`<pre>${err.message || "Unknown error"}</pre>`);
   }
 }
